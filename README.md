@@ -1,6 +1,6 @@
-# ptw: Parametric Time Warping in Rust
+# ptwRust: Parametric Time Warping in Rust
 
-> **Experimental Port**: This project is an experiment in porting the R package [`ptw`](https://github.com/rwehrens/ptw) to Rust, leveraging the `trueno` numeric crate and `extendr` for R bindings. The goal is to explore performance improvements and type safety in scientific computing workflows.
+> **Experimental Port**: This project is an experiment in porting the R package [`ptw`](https://github.com/rwehrens/ptw) to Rust. It leverages Rust's type safety and performance features (including parallel execution via `rayon`) while maintaining full API compatibility with the original R package.
 
 ## Overview
 
@@ -12,9 +12,11 @@ This package implements Parametric Time Warping (PTW), a technique used to align
     *   **Warping Modes**: `global` (one warp for all samples) and `individual` (per-sample warping).
     *   **Optimization Criteria**: `RMS` (Root Mean Square) and `WCC` (Weighted Cross Correlation).
     *   **Initialization**: Support for custom initial coefficients and automatic restart strategies (`try = TRUE`).
+*   **High Performance**:
+    *   **Parallelization**: Multithreaded processing for multiple samples using `rayon`, automatically utilizing available CPU cores.
+    *   **Numerical Stability**: Implements advanced parameter scaling to ensure robust optimization convergence even for large datasets (N > 10,000) where polynomial warping typically faces conditioning issues.
 *   **Rust Backend**:
     *   Custom **Nelder-Mead Simplex Optimizer** implemented in pure Rust.
-    *   High-performance signal interpolation and array manipulation.
     *   Seamless R integration via `extendr`.
 
 ## Installation
@@ -30,10 +32,10 @@ devtools::install()
 
 ## Usage
 
-The API mirrors the original `ptw` package.
+The API mirrors the original `ptw` package, but the package name is `ptwRust`.
 
 ```r
-library(ptw)
+library(ptwRust)
 
 # Generate synthetic data
 time <- seq(0, 100, length.out = 100)
@@ -59,8 +61,8 @@ legend("topright", legend = c("Reference", "Original", "Warped"),
 *   **`R/ptw.R`**: R wrapper function that prepares data matrices and calls the Rust backend.
 *   **`src/rust/`**: The Rust crate containing the logic.
     *   `src/lib.rs`: `extendr` bindings exposing `ptw_fit` and `ptw_predict`.
-    *   `src/model.rs`: `PtwModel` struct, warping logic, and WCC implementation.
-    *   `src/optim.rs`: Generic Nelder-Mead optimizer.
+    *   `src/model.rs`: `PtwModel` struct, warping logic, and WCC implementation. Uses `rayon` for parallelizing individual warping tasks.
+    *   `src/optim.rs`: Generic Nelder-Mead optimizer with robust parameter handling.
 
 ## Benchmarks & Verification
 
@@ -69,4 +71,3 @@ Unit tests are implemented in both Rust (via `cargo test`) and R (via `testthat`
 ## License
 
 MIT
-
