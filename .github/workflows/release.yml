@@ -27,6 +27,11 @@ jobs:
         with:
           r-version: 'release'
 
+      - name: Install Rust GNU Toolchain (Windows)
+        if: runner.os == 'Windows'
+        run: rustup target add x86_64-pc-windows-gnu
+
+
       - name: Install dependencies
         uses: r-lib/actions/setup-r-dependencies@v2
         with:

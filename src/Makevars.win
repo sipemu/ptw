@@ -1,16 +1,16 @@
 TARGET = $(subst .dll,.so,$(SHLIB))
 
 # Ensure .cargo/bin is in PATH for Rstudio/R sessions
-# (Note: On Windows, cargo is usually in PATH, but we can leave this for consistency)
 export PATH := $(HOME)/.cargo/bin:$(PATH)
 
-# Rust output directory
+# Rust output directory - Force GNU target for MinGW compatibility
 RUST_DIR = rust
-RUST_TARGET_DIR = $(RUST_DIR)/target/release
+RUST_TARGET = x86_64-pc-windows-gnu
+RUST_TARGET_DIR = $(RUST_DIR)/target/$(RUST_TARGET)/release
 STATLIB = $(RUST_TARGET_DIR)/libptw_rust.a
 
 # Linker flags for Windows
-# Rust on Windows depends on these system libraries
+# Rust on Windows (GNU target) depends on these system libraries
 PKG_LIBS = -L$(RUST_TARGET_DIR) -lptw_rust -lws2_32 -luserenv -lbcrypt -ladvapi32 -lntdll
 
 # R builds $(SHLIB) from $(OBJECTS). We define OBJECTS to include our entrypoint.
@@ -19,8 +19,7 @@ OBJECTS = entrypoint.o
 $(SHLIB): $(STATLIB) $(OBJECTS)
 
 $(STATLIB):
-	cd $(RUST_DIR) && cargo build --release --lib
+	cd $(RUST_DIR) && cargo build --release --lib --target $(RUST_TARGET)
 
 clean:
 	rm -Rf $(SHLIB) $(OBJECTS) $(RUST_DIR)/target
-
