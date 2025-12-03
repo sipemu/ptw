@@ -74,6 +74,24 @@ jobs:
           files: |
             *.tgz
             *.zip
+          body: |
+            ## ptwRust v0.1.0: Initial Release
+
+            This is the first release of `ptwRust`, a high-performance port of the Parametric Time Warping algorithm to Rust.
+
+            ### Features
+            *   **Full API Compatibility**: Mirrors the `ptw` R package functionality.
+            *   **Rust Backend**: Core algorithms rewritten in Rust for speed and safety.
+            *   **Parallel Processing**: Uses `rayon` for multithreaded warping of multiple samples.
+            *   **Robust Optimization**: Custom Nelder-Mead optimizer with better stability for large datasets.
+
+            ### Installation
+            
+            **Windows / macOS:**
+            Download the attached `.zip` (Windows) or `.tgz` (macOS) file and install via:
+            ```r
+            install.packages("path/to/ptwRust_0.1.0.zip", repos = NULL)
+            ```
           draft: false
           prerelease: false
 
