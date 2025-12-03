@@ -1,4 +1,5 @@
 use crate::optim::optimize;
+use rayon::prelude::*;
 
 #[derive(Clone, Debug)]
 pub struct PtwModel {
@@ -45,14 +46,17 @@ impl PtwModel {
             self.coeffs = vec![optimized_b];
             self.crit_values = vec![score];
         } else {
-            self.coeffs = Vec::with_capacity(n_samp);
-            self.crit_values = Vec::with_capacity(n_samp);
-            for i in 0..n_samp {
+            let results: Vec<_> = (0..n_samp).into_par_iter().map(|i| {
                 let ref_sig = if n_ref == 1 { &refs[0] } else { &refs[i] };
                 let samp_sig = &samps[i];
                 
-                let (optimized_b, score) = self.run_optimization_single(&init_b, ref_sig, samp_sig, try_restart);
-                self.coeffs.push(optimized_b);
+                self.run_optimization_single(&init_b, ref_sig, samp_sig, try_restart)
+            }).collect();
+
+            self.coeffs = Vec::with_capacity(n_samp);
+            self.crit_values = Vec::with_capacity(n_samp);
+            for (b, score) in results {
+                self.coeffs.push(b);
                 self.crit_values.push(score);
             }
         }
