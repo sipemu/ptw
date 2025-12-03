@@ -1,0 +1,24 @@
+# R
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+*.Rcheck/
+.DS_Store
+
+# Rust
+src/rust/target/
+**/*.rs.bk
+
+# Build artifacts
+src/*.o
+src/*.so
+src/*.dll
+src/*.dylib
+src/ptw.so
+src/ptw.dll
+
+# Archives
+*.a
+*.lib
+

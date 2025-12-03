@@ -1,0 +1,298 @@
+
+use crate::optim::optimize;
+
+#[derive(Clone, Debug)]
+pub struct PtwModel {
+    pub coeffs: Vec<Vec<f64>>, 
+    pub warp_type: String,
+    pub optim_crit: String,
+    pub trwdth: usize,
+    pub _smooth_param: f64,
+}
+
+impl PtwModel {
+    pub fn new(warp_type: String, optim_crit: String, trwdth: usize, smooth_param: f64) -> Self {
+        Self {
+            coeffs: vec![],
+            warp_type,
+            optim_crit,
+            trwdth,
+            _smooth_param: smooth_param,
+        }
+    }
+
+    pub fn fit(
+        &mut self, 
+        refs: &[Vec<f64>], 
+        samps: &[Vec<f64>], 
+        init_coeffs: Option<Vec<f64>>,
+        try_restart: bool
+    ) {
+        let n_samp = samps.len();
+        let n_ref = refs.len();
+        
+        let default_coeffs = init_coeffs.unwrap_or_else(|| vec![0.0, 1.0]); 
+        
+        if self.warp_type == "global" {
+            let optimized = self.run_optimization(&default_coeffs, refs, samps, try_restart);
+            self.coeffs = vec![optimized];
+        } else {
+            self.coeffs = Vec::with_capacity(n_samp);
+            for i in 0..n_samp {
+                let ref_sig = if n_ref == 1 { &refs[0] } else { &refs[i] };
+                let samp_sig = &samps[i];
+                
+                let optimized = self.run_optimization_single(&default_coeffs, ref_sig, samp_sig, try_restart);
+                self.coeffs.push(optimized);
+            }
+        }
+    }
+
+    fn run_optimization(
+        &self, 
+        init: &[f64], 
+        refs: &[Vec<f64>], 
+        samps: &[Vec<f64>],
+        try_restart: bool
+    ) -> Vec<f64> {
+        let objective = |c: &[f64]| -> f64 {
+            let mut total_err = 0.0;
+            for i in 0..samps.len() {
+                let ref_sig = if refs.len() == 1 { &refs[0] } else { &refs[i] };
+                let samp_sig = &samps[i];
+                total_err += self.calculate_error(ref_sig, samp_sig, c);
+            }
+            total_err
+        };
+
+        let mut best_coeffs = optimize(init, objective);
+        
+        if try_restart {
+             let mut best_score = objective(&best_coeffs);
+             let perturbations = vec![
+                 vec![0.0, 1.0], 
+                 vec![0.0, 1.0, 0.0], 
+             ];
+             
+             for p in perturbations {
+                 if p.len() == init.len() {
+                     let c = optimize(&p, objective);
+                     let s = objective(&c);
+                     if s < best_score {
+                         best_score = s;
+                         best_coeffs = c;
+                     }
+                 }
+             }
+        }
+        best_coeffs
+    }
+    
+    fn run_optimization_single(
+        &self, 
+        init: &[f64], 
+        ref_sig: &[f64], 
+        samp_sig: &[f64],
+        try_restart: bool
+    ) -> Vec<f64> {
+        let objective = |c: &[f64]| -> f64 {
+            self.calculate_error(ref_sig, samp_sig, c)
+        };
+        
+        let mut best_coeffs = optimize(init, objective);
+        
+        if try_restart {
+             let best_score = objective(&best_coeffs);
+             let alt_init = vec![0.0, 1.0]; 
+             if alt_init.len() == init.len() {
+                 let c = optimize(&alt_init, objective);
+                 let s = objective(&c);
+                 if s < best_score {
+                     best_coeffs = c;
+                 }
+             }
+        }
+        best_coeffs
+    }
+
+    fn calculate_error(&self, ref_sig: &[f64], samp_sig: &[f64], coeffs: &[f64]) -> f64 {
+        let warped = warp_signal(samp_sig, coeffs);
+        
+        if self.optim_crit == "WCC" {
+             let val = wcc(ref_sig, &warped, self.trwdth);
+             1.0 - val
+        } else {
+            let mut sum_sq = 0.0;
+            let n = std::cmp::min(ref_sig.len(), warped.len());
+            for i in 0..n {
+                sum_sq += (ref_sig[i] - warped[i]).powi(2);
+            }
+            (sum_sq / n as f64).sqrt()
+        }
+    }
+
+    pub fn predict(&self, samples: &[Vec<f64>]) -> Vec<Vec<f64>> {
+        let mut results = Vec::with_capacity(samples.len());
+        for (i, samp) in samples.iter().enumerate() {
+            let coeffs = if self.warp_type == "global" {
+                &self.coeffs[0]
+            } else {
+                &self.coeffs[i]
+            };
+            results.push(warp_signal(samp, coeffs));
+        }
+        results
+    }
+}
+
+pub fn warp_signal(signal: &[f64], coeffs: &[f64]) -> Vec<f64> {
+    let n = signal.len();
+    let w_indices = warp_time(n, coeffs);
+    let mut warped = Vec::with_capacity(n);
+    
+    for &w in &w_indices {
+        warped.push(interpolate(signal, w));
+    }
+    warped
+}
+
+fn warp_time(n: usize, coeffs: &[f64]) -> Vec<f64> {
+    let mut w = Vec::with_capacity(n);
+    for i in 0..n {
+        let t = i as f64;
+        let mut val = 0.0;
+        for (p, c) in coeffs.iter().enumerate() {
+            val += c * t.powi(p as i32);
+        }
+        w.push(val);
+    }
+    w
+}
+
+fn interpolate(signal: &[f64], index: f64) -> f64 {
+    if index <= 0.0 {
+        return signal[0];
+    }
+    if index >= (signal.len() - 1) as f64 {
+        return signal[signal.len() - 1];
+    }
+    
+    let i = index.floor() as usize;
+    let frac = index - i as f64;
+    
+    let y0 = signal[i];
+    let y1 = signal[i + 1];
+    
+    y0 + frac * (y1 - y0)
+}
+
+pub fn wcc(ref_sig: &[f64], samp_sig: &[f64], width: usize) -> f64 {
+    if width == 0 {
+        return pearson_corr(ref_sig, samp_sig);
+    }
+    
+    let ref_smooth = triangle_smooth(ref_sig, width);
+    let samp_smooth = triangle_smooth(samp_sig, width);
+    
+    pearson_corr(&ref_smooth, &samp_smooth)
+}
+
+fn triangle_smooth(sig: &[f64], width: usize) -> Vec<f64> {
+    let n = sig.len();
+    let mut smoothed = vec![0.0; n];
+    let half_w = width as isize;
+    
+    for i in 0..n {
+        let mut sum = 0.0;
+        let mut w_sum = 0.0;
+        for k in -half_w..=half_w {
+            let idx = i as isize + k;
+            if idx >= 0 && idx < n as isize {
+                let weight = 1.0 - (k.abs() as f64 / (half_w as f64 + 1.0));
+                if weight > 0.0 {
+                    sum += sig[idx as usize] * weight;
+                    w_sum += weight;
+                }
+            }
+        }
+        smoothed[i] = if w_sum > 0.0 { sum / w_sum } else { sig[i] };
+    }
+    smoothed
+}
+
+fn pearson_corr(x: &[f64], y: &[f64]) -> f64 {
+    let n = std::cmp::min(x.len(), y.len());
+    if n == 0 { return 0.0; }
+    
+    let mut sum_xy = 0.0;
+    let mut sum_sq_x = 0.0;
+    let mut sum_sq_y = 0.0;
+    
+    for i in 0..n {
+        sum_xy += x[i] * y[i];
+        sum_sq_x += x[i] * x[i];
+        sum_sq_y += y[i] * y[i];
+    }
+    
+    let denom = (sum_sq_x * sum_sq_y).sqrt();
+    if denom == 0.0 { 0.0 } else { sum_xy / denom }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_wcc_basic() {
+        let s1 = vec![1.0, 2.0, 3.0, 2.0, 1.0];
+        let s2 = vec![1.0, 2.0, 3.0, 2.0, 1.0];
+        assert!((wcc(&s1, &s2, 2) - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_global_fit() {
+        let mut ref_sig = vec![0.0; 100];
+        for i in 0..100 {
+            let x = i as f64;
+            ref_sig[i] = (-0.5 * (x - 50.0).powi(2) / 10.0).exp();
+        }
+        
+        let mut samp_sig_small = vec![0.0; 100];
+        for i in 0..100 {
+            let x = i as f64;
+            samp_sig_small[i] = (-0.5 * (x - 52.0).powi(2) / 10.0).exp();
+        }
+        let samps_small = vec![samp_sig_small];
+        let refs = vec![ref_sig];
+        
+        let mut model = PtwModel::new("global".to_string(), "RMS".to_string(), 0, 0.0);
+        
+        model.fit(&refs, &samps_small, Some(vec![0.0, 1.0]), false);
+        
+        println!("Coeffs: {:?}", model.coeffs);
+        assert!((model.coeffs[0][0] - 2.0).abs() < 0.5);
+    }
+
+    #[test]
+    fn test_individual_fit() {
+         let mut ref_sig = vec![0.0; 50];
+        for i in 0..50 {
+            let x = i as f64;
+            ref_sig[i] = (-0.5 * (x - 25.0).powi(2) / 5.0).exp();
+        }
+        
+        let mut s1 = vec![0.0; 50];
+        for i in 0..50 {
+            let x = i as f64;
+            s1[i] = (-0.5 * (x - 27.0).powi(2) / 5.0).exp();
+        }
+        
+        let samps = vec![s1];
+        let refs = vec![ref_sig];
+        
+        let mut model = PtwModel::new("individual".to_string(), "RMS".to_string(), 0, 0.0);
+        model.fit(&refs, &samps, Some(vec![0.0, 1.0]), false);
+        
+        assert!((model.coeffs[0][0] - 2.0).abs() < 0.5);
+    }
+}

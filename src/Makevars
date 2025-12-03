@@ -1,0 +1,25 @@
+TARGET = $(subst .dll,.so,$(SHLIB))
+
+# Verify cargo exists
+CARGO_BIN := $(shell which cargo 2>/dev/null)
+ifeq ($(CARGO_BIN),)
+$(error Cargo not found. Please install Rust.)
+endif
+
+# Rust output directory
+RUST_DIR = rust
+RUST_TARGET_DIR = $(RUST_DIR)/target/release
+STATLIB = $(RUST_TARGET_DIR)/libptw.a
+
+# Linker flags
+PKG_LIBS = -L$(RUST_TARGET_DIR) -lptw -lpthread -ldl
+
+# Rules
+$(SHLIB): $(STATLIB)
+
+$(STATLIB):
+	cd $(RUST_DIR) && cargo build --release --lib
+
+clean:
+	rm -Rf $(SHLIB) $(OBJECTS) $(RUST_DIR)/target
+

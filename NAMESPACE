@@ -1,0 +1,3 @@
+useDynLib(ptw, .registration = TRUE)
+exportPattern("^[[:alpha:]]+")
+

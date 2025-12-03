@@ -1,0 +1,11 @@
+Package: ptw
+Title: Parametric Time Warping in Rust
+Version: 0.1.0
+Authors@R: person("R", "Developer", email = "dev@example.com", role = c("aut", "cre"))
+Description: Implements Parametric Time Warping using Rust and the trueno crate for high performance.
+License: MIT
+Encoding: UTF-8
+LazyData: true
+RoxygenNote: 7.2.3
+SystemRequirements: Cargo (Rust's package manager), rustc
+
