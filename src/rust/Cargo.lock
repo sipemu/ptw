@@ -59,7 +59,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "ptw"
+name = "ptw_rust"
 version = "0.1.0"
 dependencies = [
  "anyhow",

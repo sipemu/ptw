@@ -1,4 +1,4 @@
-Package: ptw
+Package: ptwRust
 Title: Parametric Time Warping in Rust
 Version: 0.1.0
 Authors@R: person("R", "Developer", email = "dev@example.com", role = c("aut", "cre"))

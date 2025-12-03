@@ -1,5 +1,5 @@
 library(testthat)
-library(ptw)
+library(ptwRust)
 
-test_check("ptw")
+test_check("ptwRust")
 

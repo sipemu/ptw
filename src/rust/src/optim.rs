@@ -10,7 +10,7 @@ where
     // Standard parameters
     let rho = 0.5;
     let sigma = 0.5;
-    let max_iter = 1000; // Increased iteration count
+    let max_iter = 5000; // Increased iteration count
     let tol = 1e-6;
 
     let mut simplex = Vec::with_capacity(dim + 1);

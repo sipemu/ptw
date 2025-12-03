@@ -1,9 +1,8 @@
-
 use crate::optim::optimize;
 
 #[derive(Clone, Debug)]
 pub struct PtwModel {
-    pub coeffs: Vec<Vec<f64>>, 
+    pub coeffs: Vec<Vec<f64>>, // Normalized coefficients (b)
     pub warp_type: String,
     pub optim_crit: String,
     pub trwdth: usize,
@@ -28,29 +27,35 @@ impl PtwModel {
         init_coeffs: Option<Vec<f64>>,
         try_restart: bool
     ) {
+        if samps.is_empty() { return; }
         let n_samp = samps.len();
         let n_ref = refs.len();
+        let n_points = samps[0].len();
         
-        let default_coeffs = init_coeffs.unwrap_or_else(|| vec![0.0, 1.0]); 
+        // Default 'a' coeffs (unscaled)
+        let default_coeffs_a = init_coeffs.unwrap_or_else(|| vec![0.0, 1.0, 0.0]); 
+        
+        // Convert to 'b' coeffs (scaled)
+        let init_b = scale_coeffs(&default_coeffs_a, n_points);
         
         if self.warp_type == "global" {
-            let optimized = self.run_optimization(&default_coeffs, refs, samps, try_restart);
-            self.coeffs = vec![optimized];
+            let optimized_b = self.run_optimization(&init_b, refs, samps, try_restart);
+            self.coeffs = vec![optimized_b];
         } else {
             self.coeffs = Vec::with_capacity(n_samp);
             for i in 0..n_samp {
                 let ref_sig = if n_ref == 1 { &refs[0] } else { &refs[i] };
                 let samp_sig = &samps[i];
                 
-                let optimized = self.run_optimization_single(&default_coeffs, ref_sig, samp_sig, try_restart);
-                self.coeffs.push(optimized);
+                let optimized_b = self.run_optimization_single(&init_b, ref_sig, samp_sig, try_restart);
+                self.coeffs.push(optimized_b);
             }
         }
     }
 
     fn run_optimization(
         &self, 
-        init: &[f64], 
+        init_b: &[f64], 
         refs: &[Vec<f64>], 
         samps: &[Vec<f64>],
         try_restart: bool
@@ -65,17 +70,18 @@ impl PtwModel {
             total_err
         };
 
-        let mut best_coeffs = optimize(init, objective);
+        let mut best_coeffs = optimize(init_b, objective);
         
         if try_restart {
              let mut best_score = objective(&best_coeffs);
+             // Perturbations in 'b' space. Identity is [0, 1, 0].
              let perturbations = vec![
-                 vec![0.0, 1.0], 
                  vec![0.0, 1.0, 0.0], 
+                 vec![0.0, 1.0, 0.0, 0.0], 
              ];
              
              for p in perturbations {
-                 if p.len() == init.len() {
+                 if p.len() == init_b.len() {
                      let c = optimize(&p, objective);
                      let s = objective(&c);
                      if s < best_score {
@@ -90,7 +96,7 @@ impl PtwModel {
     
     fn run_optimization_single(
         &self, 
-        init: &[f64], 
+        init_b: &[f64], 
         ref_sig: &[f64], 
         samp_sig: &[f64],
         try_restart: bool
@@ -99,12 +105,12 @@ impl PtwModel {
             self.calculate_error(ref_sig, samp_sig, c)
         };
         
-        let mut best_coeffs = optimize(init, objective);
+        let mut best_coeffs = optimize(init_b, objective);
         
         if try_restart {
-             let best_score = objective(&best_coeffs);
-             let alt_init = vec![0.0, 1.0]; 
-             if alt_init.len() == init.len() {
+             let mut best_score = objective(&best_coeffs);
+             let alt_init = vec![0.0, 1.0, 0.0]; 
+             if alt_init.len() == init_b.len() {
                  let c = optimize(&alt_init, objective);
                  let s = objective(&c);
                  if s < best_score {
@@ -115,8 +121,8 @@ impl PtwModel {
         best_coeffs
     }
 
-    fn calculate_error(&self, ref_sig: &[f64], samp_sig: &[f64], coeffs: &[f64]) -> f64 {
-        let warped = warp_signal(samp_sig, coeffs);
+    fn calculate_error(&self, ref_sig: &[f64], samp_sig: &[f64], coeffs_b: &[f64]) -> f64 {
+        let warped = warp_signal(samp_sig, coeffs_b);
         
         if self.optim_crit == "WCC" {
              let val = wcc(ref_sig, &warped, self.trwdth);
@@ -145,6 +151,30 @@ impl PtwModel {
     }
 }
 
+pub fn scale_coeffs(coeffs: &[f64], n: usize) -> Vec<f64> {
+    if n <= 1 { return coeffs.to_vec(); }
+    let m = (n - 1) as f64;
+    coeffs.iter().enumerate().map(|(k, &a)| {
+        if k == 0 {
+            a / m
+        } else {
+            a * m.powi((k as i32) - 1)
+        }
+    }).collect()
+}
+
+pub fn unscale_coeffs(coeffs: &[f64], n: usize) -> Vec<f64> {
+    if n <= 1 { return coeffs.to_vec(); }
+    let m = (n - 1) as f64;
+    coeffs.iter().enumerate().map(|(k, &b)| {
+        if k == 0 {
+            b * m
+        } else {
+            b * m.powi(1 - (k as i32))
+        }
+    }).collect()
+}
+
 pub fn warp_signal(signal: &[f64], coeffs: &[f64]) -> Vec<f64> {
     let n = signal.len();
     let w_indices = warp_time(n, coeffs);
@@ -156,15 +186,18 @@ pub fn warp_signal(signal: &[f64], coeffs: &[f64]) -> Vec<f64> {
     warped
 }
 
+// Uses normalized time t in [0, 1]
 fn warp_time(n: usize, coeffs: &[f64]) -> Vec<f64> {
     let mut w = Vec::with_capacity(n);
+    let m = if n > 1 { (n - 1) as f64 } else { 1.0 };
     for i in 0..n {
-        let t = i as f64;
+        let t = i as f64 / m;
         let mut val = 0.0;
         for (p, c) in coeffs.iter().enumerate() {
             val += c * t.powi(p as i32);
         }
-        w.push(val);
+        // Map back to index
+        w.push(val * m);
     }
     w
 }
@@ -267,10 +300,11 @@ mod tests {
         
         let mut model = PtwModel::new("global".to_string(), "RMS".to_string(), 0, 0.0);
         
-        model.fit(&refs, &samps_small, Some(vec![0.0, 1.0]), false);
+        model.fit(&refs, &samps_small, Some(vec![0.0, 1.0, 0.0]), false);
         
-        println!("Coeffs: {:?}", model.coeffs);
-        assert!((model.coeffs[0][0] - 2.0).abs() < 0.5);
+        let a = unscale_coeffs(&model.coeffs[0], 100);
+        println!("Coeffs (unscaled): {:?}", a);
+        assert!((a[0] - 2.0).abs() < 0.5);
     }
 
     #[test]
@@ -291,8 +325,9 @@ mod tests {
         let refs = vec![ref_sig];
         
         let mut model = PtwModel::new("individual".to_string(), "RMS".to_string(), 0, 0.0);
-        model.fit(&refs, &samps, Some(vec![0.0, 1.0]), false);
+        model.fit(&refs, &samps, Some(vec![0.0, 1.0, 0.0]), false);
         
-        assert!((model.coeffs[0][0] - 2.0).abs() < 0.5);
+        let a = unscale_coeffs(&model.coeffs[0], 50);
+        assert!((a[0] - 2.0).abs() < 0.5);
     }
 }

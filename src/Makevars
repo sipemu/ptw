@@ -1,29 +1,23 @@
 TARGET = $(subst .dll,.so,$(SHLIB))
 
-# Verify cargo exists
-# Remove explicit check that fails in some R environments
-# CARGO_BIN := $(shell which cargo 2>/dev/null)
-# ifeq ($(CARGO_BIN),)
-# $(error Cargo not found. Please install Rust.)
-# endif
-
 # Ensure .cargo/bin is in PATH for Rstudio/R sessions
 export PATH := $(HOME)/.cargo/bin:$(PATH)
 
 # Rust output directory
 RUST_DIR = rust
 RUST_TARGET_DIR = $(RUST_DIR)/target/release
-STATLIB = $(RUST_TARGET_DIR)/libptw.a
+STATLIB = $(RUST_TARGET_DIR)/libptw_rust.a
 
 # Linker flags
-PKG_LIBS = -L$(RUST_TARGET_DIR) -lptw -lpthread -ldl
+PKG_LIBS = -L$(RUST_TARGET_DIR) -lptw_rust -lpthread -ldl
 
-# Rules
-$(SHLIB): $(STATLIB)
+# R builds $(SHLIB) from $(OBJECTS). We define OBJECTS to include our entrypoint.
+OBJECTS = entrypoint.o
+
+$(SHLIB): $(STATLIB) $(OBJECTS)
 
 $(STATLIB):
 	cd $(RUST_DIR) && cargo build --release --lib
 
 clean:
 	rm -Rf $(SHLIB) $(OBJECTS) $(RUST_DIR)/target
-

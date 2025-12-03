@@ -2,6 +2,8 @@ use extendr_api::prelude::*;
 
 mod model;
 mod optim;
+#[cfg(test)]
+mod repro_test;
 
 use model::PtwModel;
 
@@ -19,7 +21,6 @@ fn ptw_fit_r(
     try_restart: bool
 ) -> List {
     
-    // Helper to reconstruct Vec<Vec<f64>> from flat vector
     let reconstruct = |flat: &[f64], n_sigs: usize| -> Vec<Vec<f64>> {
         if n_sigs == 0 { return vec![]; }
         let len = flat.len() / n_sigs;
@@ -44,21 +45,23 @@ fn ptw_fit_r(
     model.fit(&refs, &samps, init, try_restart);
 
     // Flatten coefficients for return
-    // If global, coeffs is 1 vector. R expects matrix (1 row).
-    // If individual, coeffs is N vectors. R expects matrix (N rows).
-    // We return flat vector + dimensions, let R shape it.
-    // Actually, simpler to just return flat vector and let R wrap it.
+    // Unscale coefficients (b -> a) for R
+    let n_points = if !samps.is_empty() { samps[0].len() } else { 0 };
     
-    let coeffs_flat: Vec<f64> = model.coeffs.iter().flatten().cloned().collect();
+    let mut coeffs_flat = Vec::new();
+    for b_vec in &model.coeffs {
+        let a_vec = model::unscale_coeffs(b_vec, n_points);
+        coeffs_flat.extend(a_vec);
+    }
     
-    // Generate warped samples using predict logic (needed for return value)
+    // Generate warped samples using predict logic
     let warped_samps = model.predict(&samps);
     let warped_flat: Vec<f64> = warped_samps.iter().flatten().cloned().collect();
 
     list!(
         coeffs = coeffs_flat,
         warped = warped_flat,
-        n_coeffs = model.coeffs[0].len() as i32
+        n_coeffs = if model.coeffs.is_empty() { 0 } else { model.coeffs[0].len() as i32 }
     )
 }
 
@@ -69,7 +72,6 @@ fn ptw_predict_r(
     coeffs_flat: Vec<f64>, 
     coeffs_n_samples: i32
 ) -> Vec<f64> {
-    // Reconstruct
     let samps = if samp_n_samples > 0 {
         let len = samp_vec.len() / samp_n_samples as usize;
         samp_vec.chunks(len).map(|c| c.to_vec()).collect()
@@ -77,19 +79,23 @@ fn ptw_predict_r(
         vec![]
     };
     
-    let coeffs = if coeffs_n_samples > 0 {
+    let coeffs_a = if coeffs_n_samples > 0 {
         let len = coeffs_flat.len() / coeffs_n_samples as usize;
         coeffs_flat.chunks(len).map(|c| c.to_vec()).collect()
     } else {
         vec![]
     };
 
-    // Temporary model for prediction
+    // Scale coeffs (a -> b) for internal model
+    let n_points = if !samps.is_empty() { samps[0].len() } else { 0 };
+    let mut coeffs_b = Vec::new();
+    for a_vec in coeffs_a {
+        coeffs_b.push(model::scale_coeffs(&a_vec, n_points));
+    }
+
     let mut model = PtwModel::new("".to_string(), "".to_string(), 0, 0.0);
-    model.coeffs = coeffs;
+    model.coeffs = coeffs_b;
     
-    // Decide warp type based on coeffs vs samps
-    // If coeffs has 1 set, global. If N sets, individual (assuming N matches samps)
     model.warp_type = if model.coeffs.len() == 1 { 
         "global".to_string() 
     } else { 
@@ -101,7 +107,7 @@ fn ptw_predict_r(
 }
 
 extendr_module! {
-    mod ptw;
+    mod ptw_rust;
     fn ptw_fit_r;
     fn ptw_predict_r;
 }
