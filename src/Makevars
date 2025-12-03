@@ -1,10 +1,14 @@
 TARGET = $(subst .dll,.so,$(SHLIB))
 
 # Verify cargo exists
-CARGO_BIN := $(shell which cargo 2>/dev/null)
-ifeq ($(CARGO_BIN),)
-$(error Cargo not found. Please install Rust.)
-endif
+# Remove explicit check that fails in some R environments
+# CARGO_BIN := $(shell which cargo 2>/dev/null)
+# ifeq ($(CARGO_BIN),)
+# $(error Cargo not found. Please install Rust.)
+# endif
+
+# Ensure .cargo/bin is in PATH for Rstudio/R sessions
+export PATH := $(HOME)/.cargo/bin:$(PATH)
 
 # Rust output directory
 RUST_DIR = rust
