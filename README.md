@@ -21,9 +21,23 @@ This package implements Parametric Time Warping (PTW), a technique used to align
 
 ## Installation
 
-Ensure you have the [Rust toolchain](https://rustup.rs/) installed (including `cargo`).
+### Binary Installation (Recommended for non-Rust users)
 
-### From Source
+If you do not have the Rust toolchain installed, you can install the pre-compiled binary packages from the [GitHub Releases](https://github.com/sipemu/ptw/releases) page.
+
+1.  Download the appropriate file for your OS:
+    *   **Windows**: `ptwRust_*.zip`
+    *   **macOS**: `ptwRust_*.tgz`
+2.  Install in R:
+
+```r
+# Replace path with the actual location of the downloaded file
+install.packages("~/Downloads/ptwRust_0.1.0.zip", repos = NULL)
+```
+
+### From Source (Requires Rust)
+
+Ensure you have the [Rust toolchain](https://rustup.rs/) installed (including `cargo`).
 
 ```r
 # Install directly from the repository or local source
