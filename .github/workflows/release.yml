@@ -40,7 +40,7 @@ jobs:
 
       - name: Build Binary Package
         run: |
-          pkg_path <- devtools::build(binary = TRUE)
+          pkg_path <- devtools::build(binary = TRUE, path = ".")
           writeLines(pkg_path, "pkg_path.txt")
         shell: Rscript {0}
 
