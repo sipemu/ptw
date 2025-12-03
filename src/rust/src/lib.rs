@@ -61,7 +61,8 @@ fn ptw_fit_r(
     list!(
         coeffs = coeffs_flat,
         warped = warped_flat,
-        n_coeffs = if model.coeffs.is_empty() { 0 } else { model.coeffs[0].len() as i32 }
+        n_coeffs = if model.coeffs.is_empty() { 0 } else { model.coeffs[0].len() as i32 },
+        crit_value = model.crit_values
     )
 }
 

@@ -3,6 +3,7 @@ use crate::optim::optimize;
 #[derive(Clone, Debug)]
 pub struct PtwModel {
     pub coeffs: Vec<Vec<f64>>, // Normalized coefficients (b)
+    pub crit_values: Vec<f64>, // Scores
     pub warp_type: String,
     pub optim_crit: String,
     pub trwdth: usize,
@@ -13,6 +14,7 @@ impl PtwModel {
     pub fn new(warp_type: String, optim_crit: String, trwdth: usize, smooth_param: f64) -> Self {
         Self {
             coeffs: vec![],
+            crit_values: vec![],
             warp_type,
             optim_crit,
             trwdth,
@@ -39,16 +41,19 @@ impl PtwModel {
         let init_b = scale_coeffs(&default_coeffs_a, n_points);
         
         if self.warp_type == "global" {
-            let optimized_b = self.run_optimization(&init_b, refs, samps, try_restart);
+            let (optimized_b, score) = self.run_optimization(&init_b, refs, samps, try_restart);
             self.coeffs = vec![optimized_b];
+            self.crit_values = vec![score];
         } else {
             self.coeffs = Vec::with_capacity(n_samp);
+            self.crit_values = Vec::with_capacity(n_samp);
             for i in 0..n_samp {
                 let ref_sig = if n_ref == 1 { &refs[0] } else { &refs[i] };
                 let samp_sig = &samps[i];
                 
-                let optimized_b = self.run_optimization_single(&init_b, ref_sig, samp_sig, try_restart);
+                let (optimized_b, score) = self.run_optimization_single(&init_b, ref_sig, samp_sig, try_restart);
                 self.coeffs.push(optimized_b);
+                self.crit_values.push(score);
             }
         }
     }
@@ -59,7 +64,7 @@ impl PtwModel {
         refs: &[Vec<f64>], 
         samps: &[Vec<f64>],
         try_restart: bool
-    ) -> Vec<f64> {
+    ) -> (Vec<f64>, f64) {
         let objective = |c: &[f64]| -> f64 {
             let mut total_err = 0.0;
             for i in 0..samps.len() {
@@ -70,10 +75,9 @@ impl PtwModel {
             total_err
         };
 
-        let mut best_coeffs = optimize(init_b, objective);
+        let (mut best_coeffs, mut best_score) = optimize(init_b, objective);
         
         if try_restart {
-             let mut best_score = objective(&best_coeffs);
              // Perturbations in 'b' space. Identity is [0, 1, 0].
              let perturbations = vec![
                  vec![0.0, 1.0, 0.0], 
@@ -82,8 +86,7 @@ impl PtwModel {
              
              for p in perturbations {
                  if p.len() == init_b.len() {
-                     let c = optimize(&p, objective);
-                     let s = objective(&c);
+                     let (c, s) = optimize(&p, objective);
                      if s < best_score {
                          best_score = s;
                          best_coeffs = c;
@@ -91,7 +94,7 @@ impl PtwModel {
                  }
              }
         }
-        best_coeffs
+        (best_coeffs, best_score)
     }
     
     fn run_optimization_single(
@@ -100,25 +103,24 @@ impl PtwModel {
         ref_sig: &[f64], 
         samp_sig: &[f64],
         try_restart: bool
-    ) -> Vec<f64> {
+    ) -> (Vec<f64>, f64) {
         let objective = |c: &[f64]| -> f64 {
             self.calculate_error(ref_sig, samp_sig, c)
         };
         
-        let mut best_coeffs = optimize(init_b, objective);
+        let (mut best_coeffs, mut best_score) = optimize(init_b, objective);
         
         if try_restart {
-             let mut best_score = objective(&best_coeffs);
              let alt_init = vec![0.0, 1.0, 0.0]; 
              if alt_init.len() == init_b.len() {
-                 let c = optimize(&alt_init, objective);
-                 let s = objective(&c);
+                 let (c, s) = optimize(&alt_init, objective);
                  if s < best_score {
                      best_coeffs = c;
+                     best_score = s;
                  }
              }
         }
-        best_coeffs
+        (best_coeffs, best_score)
     }
 
     fn calculate_error(&self, ref_sig: &[f64], samp_sig: &[f64], coeffs_b: &[f64]) -> f64 {

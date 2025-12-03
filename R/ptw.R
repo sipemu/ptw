@@ -110,7 +110,7 @@ ptw <- function(ref, samp, selected.traces = NULL, init.coef = NULL, try = FALSE
     warped.sample = warped_sample,
     warp.coef = coeffs,
     warp.fun = coeffs, # Legacy support
-    crit.value = NA, # TODO: return scores
+    crit.value = res$crit_value,
     optim.crit = optim.crit,
     warp.type = warp.type,
     mode = mode # Store mode

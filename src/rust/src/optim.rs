@@ -1,6 +1,6 @@
 
 
-pub fn optimize<F>(init_coeffs: &[f64], mut objective_fn: F) -> Vec<f64>
+pub fn optimize<F>(init_coeffs: &[f64], mut objective_fn: F) -> (Vec<f64>, f64)
 where
     F: FnMut(&[f64]) -> f64,
 {
@@ -99,7 +99,7 @@ where
     }
 
     let best_idx = indices_of_min(&scores);
-    simplex[best_idx].clone()
+    (simplex[best_idx].clone(), scores[best_idx])
 }
 
 // Helper math functions
